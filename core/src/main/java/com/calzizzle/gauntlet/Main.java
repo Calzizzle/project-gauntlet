@@ -10,6 +10,7 @@ import com.badlogic.gdx.graphics.g2d.SpriteBatch;
 import com.badlogic.gdx.math.MathUtils;
 import com.badlogic.gdx.math.Rectangle;
 import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.utils.Array;
 import com.badlogic.gdx.utils.ScreenUtils;
 import com.badlogic.gdx.Gdx;
 import com.badlogic.gdx.audio.Music;
@@ -19,37 +20,37 @@ import com.badlogic.gdx.utils.viewport.FitViewport;
 /** {@link com.badlogic.gdx.ApplicationListener} implementation shared by all platforms. */
 public class Main extends ApplicationAdapter {
     private SpriteBatch batch;
+    public static Sprite heroSprite;
     private Texture image;
     Texture bobTexture;
-    Texture spiderTexture;
-    Texture skeleboneTexture;
     Texture backgroundTexture;
-    Texture bulletTexture;
     Sound hurtSound;
     Sound bulletSound;
     Music music;
     SpriteBatch spriteBatch;
-    FitViewport viewport;
-    Sprite heroSprite;
+    public static FitViewport viewport;
     Vector2 touchPos;
-    Vector2 enemyPos;
-    Vector2 enemyTarget;
-    Vector2 enemyVelocity;
-    Sprite spiderSprite;
-    Sprite skeleboneSprite;
-    Sprite bulletSprite;
-
-    float enemyTimer;
+    float enemyTimer = 0;
+    final float period = 2.0f;
     Rectangle heroRectangle;
     Rectangle spiderRectangle;
     Rectangle skeleboneRectangle;
+    Rectangle bulletRectangle;
     int health = 100;
-    final float damageCooldown = 1f;
+    final float damageCooldown = 2f;
     float cooldownTime = 0f;
     boolean Invincible = false;
     BitmapFont font;
     int bulletCount = 0;
     boolean bulletExist = false;
+    float skeleboneSpeed = 20f;
+    float spiderSpeed = 20f;
+    float numEnemies = 0f;
+    public static Texture skeleboneTexture;
+    public static Texture spiderTexture;
+    public static Array<Sprite> skeleboneSpriteList;
+    public static Array<Sprite> spiderSpriteList;
+    public static Array<Sprite> bulletSpriteList;
 
     @Override
     public void create() {
@@ -57,32 +58,27 @@ public class Main extends ApplicationAdapter {
         image = new Texture("libgdx.png");
         backgroundTexture = new Texture("backgroundHeroBob.png");
         bobTexture = new Texture("HeroBob.png");
+        skeleboneTexture  = new Texture("Skelebone.png");
         spiderTexture = new Texture("spider.png");
-        skeleboneTexture = new Texture("Skelebone.png");
-        bulletTexture = new Texture("bullet.png");
         music = Gdx.audio.newMusic(Gdx.files.internal("AdventureofBob.mp3"));
         spriteBatch = new SpriteBatch();
         viewport = new FitViewport(123, 123);
         heroSprite = new Sprite(bobTexture);
         heroSprite.setPosition(viewport.getWorldWidth() / 2 - 8, viewport.getWorldHeight() / 2 - 8);
         heroSprite.setSize(16, 16);
-        spiderSprite = new Sprite(spiderTexture);
-        skeleboneSprite = new Sprite(skeleboneTexture);
         touchPos = new Vector2();
         heroRectangle = new Rectangle();
         spiderRectangle = new Rectangle();
         skeleboneRectangle = new Rectangle();
+        bulletRectangle = new Rectangle();
         music.setLooping(true);
         music.setVolume(.5f);
         music.play();
-        enemyPos = new Vector2();
-        enemyTarget = new Vector2();
-        enemyVelocity = new Vector2();
         font = new BitmapFont();
         font.getData().setScale(0.5f);
-        bulletSprite = new Sprite(bulletTexture);
-        skeleboneRandomizer();
-        spiderRandomizer();
+        skeleboneSpriteList = new Array<>();
+        spiderSpriteList = new Array<>();
+        bulletSpriteList = new Array<>();
     }
 
     @Override
@@ -116,25 +112,79 @@ public class Main extends ApplicationAdapter {
         float heroWidth = heroSprite.getWidth();
         float heroHeight = heroSprite.getHeight();
         float delta = Gdx.graphics.getDeltaTime();
+        Vector2 heroPos = new Vector2(heroSprite.getX(), heroSprite.getY());
         heroSprite.setX(MathUtils.clamp(heroSprite.getX(), 0, worldWidth - heroWidth));
         heroRectangle.set(heroSprite.getX(), heroSprite.getY(), heroWidth, heroHeight);
-        skeleboneRectangle.set(skeleboneSprite.getX(), skeleboneSprite.getY(), 16, 16);
-        spiderRectangle.set(spiderSprite.getX(), spiderSprite.getY(), 16, 16);
-        if(skeleboneRectangle.overlaps(heroRectangle) || spiderRectangle.overlaps(heroRectangle)){
-            if(Invincible){
-                cooldownTime -= delta;
-                if(cooldownTime <= 0){
-                    Invincible = false;
-                    cooldownTime = 0f;
-                }
+        enemyTimer += delta;
+        if(enemyTimer > 3f && numEnemies < 10 ){
+            enemyTimer = 0;
+            createSkelebone();
+            createSpider();
+            numEnemies += 2;
+        }
+        for (int i = skeleboneSpriteList.size - 1; i >= 0; i--) {
+            Sprite skeleboneSprite = skeleboneSpriteList.get(i);
+            float skeleboneWidth = skeleboneSprite.getWidth();
+            float skeleboneHeight = skeleboneSprite.getHeight();
+            float t = 0.5f;
+            Vector2 skelebonePos = new Vector2(skeleboneSprite.getX(), skeleboneSprite.getY());
+            Vector2 heroPosVec = new Vector2(heroSprite.getX(), heroSprite.getY());
+            Vector2 direction = new Vector2(heroPosVec).sub(skelebonePos);
+            float distance = direction.len();
+            float movementDistance = skeleboneSpeed * delta;
+            if(movementDistance >= distance){
+                skeleboneSprite.setPosition(heroPosVec.x, heroPosVec.y);
             }else {
-                takeDamage(5);
+                direction.nor();
+                direction.scl(movementDistance);
+                skeleboneSprite.translate(direction.x, direction.y);
+            }
+            skeleboneRectangle.set(skeleboneSprite.getX(), skeleboneSprite.getY(), skeleboneWidth, skeleboneHeight);
+            if(skeleboneRectangle.overlaps(heroRectangle)){
+                if(Invincible){
+                    cooldownTime -= delta;
+                    if(cooldownTime <= 0){
+                        Invincible = false;
+                        cooldownTime = 0f;
+                    }
+                }else {
+                    takeDamage(5);
+                }
+            }
+        }
+        for (int i = spiderSpriteList.size - 1; i >= 0; i--) {
+            Sprite spiderSprite = spiderSpriteList.get(i);
+            float spiderWidth = spiderSprite.getWidth();
+            float spiderHeight = spiderSprite.getHeight();
+            float t = 0.5f;
+            Vector2 spiderPos = new Vector2(spiderSprite.getX(), spiderSprite.getY());
+            Vector2 heroPosVec = new Vector2(heroSprite.getX(), heroSprite.getY());
+            Vector2 direction = new Vector2(heroPosVec).sub(spiderPos);
+            float distance = direction.len();
+            float movementDistance = spiderSpeed * delta;
+            if(movementDistance >= distance){
+                spiderSprite.setPosition(heroPosVec.x, heroPosVec.y);
+            }else {
+                direction.nor();
+                direction.scl(movementDistance);
+                spiderSprite.translate(direction.x, direction.y);
+            }
+            spiderRectangle.set(spiderSprite.getX(), spiderSprite.getY(), spiderWidth, spiderHeight);
+            if(spiderRectangle.overlaps(heroRectangle)) {
+                if (Invincible) {
+                    cooldownTime -= delta;
+                    if (cooldownTime <= 0) {
+                        Invincible = false;
+                        cooldownTime = 0f;
+                    }
+                } else {
+                    takeDamage(5);
+                }
             }
         }
     }
 
     private void draw() {
-        String healthText = String.valueOf(health);
         ScreenUtils.clear(Color.BLACK);
         viewport.apply();
         spriteBatch.setProjectionMatrix(viewport.getCamera().combined);
@@ -146,46 +196,38 @@ public class Main extends ApplicationAdapter {
         if(health > 0) {
             heroSprite.draw(spriteBatch);
         }
-        if(Gdx.input.isTouched()){
-            bulletSprite.draw(spriteBatch);
-            bulletCount ++;
-            bulletExist = true;
-            if(bulletExist){
-                bulletSprite.draw(spriteBatch);
+        font.draw(spriteBatch, "Health: " + String.valueOf(health), 1, 110);
+            for (Sprite skeleboneSprite : skeleboneSpriteList) {
+                skeleboneSprite.draw(spriteBatch);
             }
+            for (Sprite spiderSprite : spiderSpriteList) {
+                spiderSprite.draw(spriteBatch);
         }
-        skeleboneSprite.draw(spriteBatch);
-        spiderSprite.draw(spriteBatch);
-        font.draw(spriteBatch, "Health: " + healthText, 1, 110);
         spriteBatch.end();
-
     }
-
-    private void skeleboneRandomizer() {
-        float enemyWidth = 16;
-        float enemyHeight = 16;
+    private void createSkelebone() {
+        float skeleboneWidth = 16;
+        float skeleboneHeight = 16;
         float worldWidth = viewport.getWorldWidth();
         float worldHeight = viewport.getWorldHeight();
-        float maxX = worldWidth - enemyWidth;
-        float maxY =worldHeight - enemyHeight;
-        float randX = MathUtils.random(0, maxX);
-        float randY = MathUtils.random(0, maxY);
+        float randX = MathUtils.random(0f, worldWidth - skeleboneWidth);
+        float randY = MathUtils.random(0f, worldHeight - skeleboneHeight);
+        Sprite skeleboneSprite = new Sprite(skeleboneTexture);
+        skeleboneSprite.setSize(skeleboneWidth, skeleboneHeight);
         skeleboneSprite.setPosition(randX, randY);
+        skeleboneSpriteList.add(skeleboneSprite);
     }
-
-    private void spiderRandomizer() {
-        float enemyWidth = 16;
-        float enemyHeight = 16;
+    private void createSpider() {
+        float spiderWidth = 16;
+        float spiderHeight = 16;
         float worldWidth = viewport.getWorldWidth();
         float worldHeight = viewport.getWorldHeight();
-        float maxX = worldWidth - enemyWidth;
-        float maxY =worldHeight - enemyHeight;
-        float randX = MathUtils.random(0, maxX);
-        float randY = MathUtils.random(0, maxY);
+        float randX = MathUtils.random(0f, worldWidth - spiderWidth);
+        float randY = MathUtils.random(0f, worldHeight - spiderHeight);
+        Sprite spiderSprite = new Sprite(spiderTexture);
+        spiderSprite.setSize(spiderWidth, spiderHeight);
         spiderSprite.setPosition(randX, randY);
-    }
-    private void bulletInit(){
-        bulletSprite.setPosition(heroSprite.getX(), heroSprite.getY());
+        spiderSpriteList.add(spiderSprite);
     }
     private void takeDamage(int x){
         if (Invincible)return;
